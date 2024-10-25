@@ -1,8 +1,9 @@
 # should be used like this: 
 # 1. run ./crypto-erase.ps1
 # 2. script enumerates all drives and asks for the drive(s) to erase
-# 3. for each drive selected, run the diskpart series of commands, either via diskpart script or manual entry
-# 4. for each drive selected, use `manage-bde.exe` to enable bitlocker with a random password each
+# 3. for each drive selected, run the diskpart series of commands, either via diskpart script or manual entry'
+#    - refresh drive letters per disk by disk number bc diskpart will change them
+# 4. for each drive selected, use powershell cmdlets to enable bitlocker with a random password each
 # 5. for each drive, spin until the drive is fully encrypted
 # 5.5 perhaps list percentages of encryption progress periodically. say a drive is done encrypting or fully done wiping as needed.
 # 6. once a drive is done, rerun the diskpart series of commands to wipe the drive
@@ -49,104 +50,7 @@ function New-RandomPassword {
 # $Password = New-RandomPassword -Length 25 -IncludeSpecialChars
 # echo "Password is: $Password"
 
-# enumerate all disks and their associated drive letters
-function Get-DiskInformation {
-    [CmdletBinding()]
-    param()
-    
-    try {
-        # Get disk information using Get-WmiObject
-        $disks = Get-WmiObject -Class Win32_LogicalDisk | Select-Object @{
-            Name = 'DriveLetter'
-            Expression = {$_.DeviceID}
-        },
-        @{
-            Name = 'DriveType'
-            Expression = {
-                switch($_.DriveType) {
-                    0 {'Unknown'}
-                    1 {'No Root Directory'}
-                    2 {'Removable Disk'}
-                    3 {'Local Disk'}
-                    4 {'Network Drive'}
-                    5 {'Compact Disc'}
-                    6 {'RAM Disk'}
-                    default {'Unspecified'}
-                }
-            }
-        },
-        @{
-            Name = 'SizeGB'
-            Expression = {[math]::Round($_.Size / 1GB, 2)}
-        },
-        @{
-            Name = 'FreeSpaceGB'
-            Expression = {[math]::Round($_.FreeSpace / 1GB, 2)}
-        },
-        @{
-            Name = 'UsedSpaceGB'
-            Expression = {[math]::Round(($_.Size - $_.FreeSpace) / 1GB, 2)}
-        },
-        @{
-            Name = 'PercentFree'
-            Expression = {
-                if ($_.Size -gt 0) {
-                    [math]::Round(($_.FreeSpace / $_.Size) * 100, 1)
-                } else {
-                    0
-                }
-            }
-        },
-        @{
-            Name = 'VolumeName'
-            Expression = {$_.VolumeName}
-        }
-
-        # Add error handling for no disks found
-        if ($null -eq $disks) {
-            Write-Warning "No disks were found on this system."
-            return $null
-        }
-
-        # Format and return the results
-        return $disks | Sort-Object DriveLetter
-    }
-    catch {
-        Write-Error "An error occurred while retrieving disk information: $_"
-        return $null
-    }
-}
-
-# Add an example function to format the output as a nice table
-# function Show-DiskInformation {
-#     [CmdletBinding()]
-#     param()
-    
-#     $diskInfo = Get-DiskInformation
-    
-#     if ($null -ne $diskInfo) {
-#         Write-Host "`nDisk Information Summary:" -ForegroundColor Cyan
-#         Write-Host "========================" -ForegroundColor Cyan
-        
-#         $diskInfo | ForEach-Object {
-#             Write-Host "`nDrive $($_.DriveLetter) ($($_.DriveType))" -ForegroundColor Yellow
-#             if ($_.VolumeName) {
-#                 Write-Host "Volume Name: $($_.VolumeName)"
-#             }
-#             Write-Host "Total Size: $($_.SizeGB) GB"
-#             Write-Host "Used Space: $($_.UsedSpaceGB) GB"
-#             Write-Host "Free Space: $($_.FreeSpaceGB) GB"
-#             Write-Host "Percent Free: $($_.PercentFree)%"
-            
-#             # Add warning for low disk space
-#             if ($_.PercentFree -lt 10) {
-#                 Write-Host "WARNING: Low disk space!" -ForegroundColor Red
-#             }
-#         }
-#     }
-# }
-
-function Get-DiskSelection {
+function Get-DiskInfo {
     [CmdletBinding()]
     param()
     
@@ -157,11 +61,7 @@ function Get-DiskSelection {
         $partitions = Get-Partition | Where-Object DriveLetter
         
         # Create array to store disk information
-        $script:diskInfoArray = @()
-        
-        # Display header
-        Write-Host "`nAvailable Disks:" -ForegroundColor Cyan
-        Write-Host "================`n" -ForegroundColor Cyan
+        $diskInfoArray = @()
         
         # Process each disk
         foreach ($disk in $physicalDisks) {
@@ -178,22 +78,41 @@ function Get-DiskSelection {
                 }
             }
             
-            # Create disk info object
-            $diskInfo = [PSCustomObject]@{
+            # Create and add disk info object
+            $diskInfoArray += [PSCustomObject]@{
                 DiskNumber = $disk.DeviceId
                 FriendlyName = $disk.FriendlyName
                 DriveLetters = $driveLetters
                 CapacityGB = [math]::Round($totalCapacity / 1GB, 2)
             }
-            
-            # Add to array
-            $script:diskInfoArray += $diskInfo
-            
-            # Display disk information
-            Write-Host "Disk $($disk.DeviceId):" -ForegroundColor Yellow
+        }
+        
+        return $diskInfoArray
+    }
+    catch {
+        Write-Error "An error occurred while gathering disk information: $_"
+        return $null
+    }
+}
+
+function Select-DiskFromList {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [Array]$DiskList
+    )
+    
+    try {
+        # Display header
+        Write-Host "`nAvailable Disks:" -ForegroundColor Cyan
+        Write-Host "================`n" -ForegroundColor Cyan
+        
+        # Display disk information
+        foreach ($disk in $DiskList) {
+            Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
             Write-Host "  Name: $($disk.FriendlyName)"
-            Write-Host "  Drive Letters: $driveLetters"
-            Write-Host "  Capacity: $([math]::Round($totalCapacity / 1GB, 2)) GB`n"
+            Write-Host "  Drive Letters: $($disk.DriveLetters)"
+            Write-Host "  Capacity: $($disk.CapacityGB) GB`n"
         }
         
         # Prompt for selection
@@ -206,7 +125,7 @@ function Get-DiskSelection {
         
         # Process selection
         $selectedNumbers = $selection -split ',' | ForEach-Object { $_.Trim() }
-        $selectedDisks = $script:diskInfoArray | Where-Object { $selectedNumbers -contains $_.DiskNumber }
+        $selectedDisks = $DiskList | Where-Object { $selectedNumbers -contains $_.DiskNumber }
         
         if ($selectedDisks) {
             return $selectedDisks
@@ -216,51 +135,176 @@ function Get-DiskSelection {
         }
     }
     catch {
-        Write-Error "An error occurred while processing disk information: $_"
+        Write-Error "An error occurred during disk selection: $_"
         return $null
     }
 }
 
-function Show-StoredDiskInfo {
-    if ($script:diskInfoArray) {
-        Write-Host "`nStored Disk Information:" -ForegroundColor Cyan
-        Write-Host "======================`n" -ForegroundColor Cyan
-        
-        foreach ($disk in $script:diskInfoArray) {
-            Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
-            Write-Host "  Name: $($disk.FriendlyName)"
-            Write-Host "  Drive Letters: $($disk.DriveLetters)"
-            Write-Host "  Capacity: $($disk.CapacityGB) GB`n"
-        }
-    } else {
-        Write-Warning "No disk information stored. Please run Get-DiskSelection first."
+# Helper function to display disk information
+function Show-DiskInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [Array]$DiskList
+    )
+    
+    Write-Host "`nDisk Information:" -ForegroundColor Cyan
+    Write-Host "================`n" -ForegroundColor Cyan
+    
+    foreach ($disk in $DiskList) {
+        Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
+        Write-Host "  Name: $($disk.FriendlyName)"
+        Write-Host "  Drive Letters: $($disk.DriveLetters)"
+        Write-Host "  Capacity: $($disk.CapacityGB) GB`n"
     }
 }
 
-
-
-# Get disk information and make a selection
-$selectedDisks = Get-DiskSelection
-
-Write-Host "`nSelected Disk(s):" -ForegroundColor Cyan
-Write-Host "==================`n" -ForegroundColor Cyan
-foreach ($disk in $script:selectedDisks) {
-            Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
-            Write-Host "  Name: $($disk.FriendlyName)"
-            Write-Host "  Drive Letters: $($disk.DriveLetters)"
-            Write-Host "  Capacity: $($disk.CapacityGB) GB`n"
+function Initialize-NewDisk {
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+    param(
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [PSCustomObject[]]$SelectedDisks,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$FileSystem = "NTFS",
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$Force
+    )
+    
+    begin {
+        # Function to get the next available drive letter
+        function Get-NextAvailableDriveLetter {
+            $usedLetters = (Get-Volume).Where{$_.DriveLetter}.DriveLetter
+            $alphabet = 67..90 | ForEach-Object { [char]$_ } # C to Z
+            $availableLetter = $alphabet | Where-Object { $_ -notin $usedLetters } | Select-Object -First 1
+            return $availableLetter
         }
+    }
+    
+    process {
+        foreach ($disk in $SelectedDisks) {
+            try {
+                # Safety check - confirm disk number exists
+                $physicalDisk = Get-PhysicalDisk | Where-Object DeviceId -eq $disk.DiskNumber
+                if (-not $physicalDisk) {
+                    Write-Error "Disk $($disk.DiskNumber) not found!"
+                    continue
+                }
+                
+                # Warning and confirmation for data destruction
+                if (-not $Force) {
+                    Write-Warning "This operation will DESTROY ALL DATA on disk $($disk.DiskNumber) ($($disk.FriendlyName))"
+                    Write-Warning "Drive Letters: $($disk.DriveLetters)"
+                    Write-Warning "Capacity: $($disk.CapacityGB) GB"
+                    
+                    $confirmation = Read-Host "Are you sure you want to proceed? (Yes/No)"
+                    if ($confirmation -ne "Yes") {
+                        Write-Host "Operation cancelled for disk $($disk.DiskNumber)" -ForegroundColor Yellow
+                        continue
+                    }
+                }
+                
+                if ($PSCmdlet.ShouldProcess("Disk $($disk.DiskNumber)", "Initialize and format disk")) {
+                    Write-Host "`nProcessing Disk $($disk.DiskNumber):" -ForegroundColor Cyan
+                    
+                    # Step 1: Clear/Clean the disk
+                    Write-Host "  Cleaning disk..." -ForegroundColor Yellow
+                    Clear-Disk -Number $disk.DiskNumber -RemoveData -RemoveOEM -Confirm:$false
+                    
+                    # Step 2: Initialize the disk
+                    Write-Host "  Initializing disk..." -ForegroundColor Yellow
+                    Initialize-Disk -Number $disk.DiskNumber -PartitionStyle GPT
+                    
+                    # Step 3: Get next available drive letter
+                    $driveLetter = Get-NextAvailableDriveLetter
+                    if (-not $driveLetter) {
+                        throw "No available drive letters found!"
+                    }
+                    
+                    # Step 4: Create partition, format it, and assign drive letter
+                    Write-Host "  Creating partition and formatting..." -ForegroundColor Yellow
+                    $partition = New-Partition -DiskNumber $disk.DiskNumber -UseMaximumSize -AssignDriveLetter
+                    
+                    Write-Host "  Formatting volume..." -ForegroundColor Yellow
+                    $formatParams = @{
+                        FileSystem = $FileSystem
+                        NewFileSystemLabel = "New Volume"
+                        Confirm = $false
+                        Force = $true
+                    }
+                    
+                    $volume = Format-Volume -Partition $partition @formatParams 
+                    
+                    # Summary
+                    Write-Host "`nDisk $($disk.DiskNumber) successfully initialized:" -ForegroundColor Green
+                    Write-Host "  Drive Letter: $($partition.DriveLetter)" -ForegroundColor Green
+                    Write-Host "  File System: $FileSystem" -ForegroundColor Green
+                    Write-Host "  Capacity: $([math]::Round($volume.Size / 1GB, 2)) GB" -ForegroundColor Green
+                }
+            }
+            catch {
+                Write-Error "Error processing disk $($disk.DiskNumber): $_"
+            }
+        }
+    }
+    
+    end {
+        Write-Host "`nOperation completed" -ForegroundColor Green
+    }
+}
 
-# # Show all stored disk information again at any time
-# Show-StoredDiskInfo
+function Update-SelectedDiskInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [PSCustomObject[]]$SelectedDisks
+    )
+    
+    try {
+        # Get fresh disk information
+        $currentDiskInfo = Get-DiskInfo
+        
+        # Update each selected disk with current information
+        $updatedSelection = $SelectedDisks | ForEach-Object {
+            $currentDisk = $currentDiskInfo | Where-Object { $_.DiskNumber -eq $_.DiskNumber }
+            if ($currentDisk) {
+                $currentDisk
+            } else {
+                Write-Warning "Disk $($_.DiskNumber) no longer found in system"
+                $_  # Return original if not found
+            }
+        }
+        
+        return $updatedSelection
+    }
+    catch {
+        Write-Error "Error updating disk information: $_"
+        return $SelectedDisks  # Return original on error
+    }
+}
 
-# # Access the stored array directly if needed
-# $script:diskInfoArray
+# Just get disk information
+$diskInfo = Get-DiskInfo
 
-# # Filter stored information
-# $script:diskInfoArray | Where-Object { $_.CapacityGB -gt 100 }
 
+# Select disks from the list
+$selectedDisks = Select-DiskFromList -DiskList $diskInfo
+
+Show-DiskInfo $selectedDisks
+
+# Clean and format the disks
+Initialize-NewDisk  $selectedDisks
+
+# Generate random password and convert to proper format 
 $Password = New-RandomPassword -Length 25 -IncludeSpecialChars
-
 $SecureString = ConvertTo-SecureString $Password -AsPlainText -Force
-Enable-BitLocker -MountPoint "D:" -EncryptionMethod Aes256 -UsedSpaceOnly -Pin $SecureString -TPMandPinProtector
+
+# Enable BitLocker on all selected disks
+foreach ($disk in $script:selectedDisks) {
+    Enable-BitLocker -MountPoint "$($disk.DriveLetter):" -EncryptionMethod Aes256 -UsedSpaceOnly -Pin $SecureString -TPMandPinProtector -WhatIf
+}
+
+Update-SelectedDiskInfo $selectedDisks
+
+Show-DiskInfo $selectedDisks
