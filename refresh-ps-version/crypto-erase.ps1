@@ -8,6 +8,9 @@
 # 5.5 perhaps list percentages of encryption progress periodically. say a drive is done encrypting or fully done wiping as needed.
 # 6. once a drive is done, rerun the diskpart series of commands to wipe the drive
 
+## TODO
+# Make sure all disks are initialized before starting.
+
 function New-RandomPassword {
     [CmdletBinding()]
     [OutputType([string])]
@@ -87,8 +90,6 @@ function Get-DiskInfo {
             }
         }
 
-        Write-Host "Disk Info Array: $diskInfoArray"
-        
         return $diskInfoArray
     }
     catch {
@@ -255,7 +256,6 @@ function Initialize-NewDisk {
         Write-Host "`nOperation completed" -ForegroundColor Green
     }
 }
-
 function Update-SelectedDiskInfo {
     [CmdletBinding()]
     param(
@@ -269,12 +269,15 @@ function Update-SelectedDiskInfo {
         
         # Update each selected disk with current information
         $updatedSelection = $SelectedDisks | ForEach-Object {
-            $currentDisk = $currentDiskInfo | Where-Object { $_.DiskNumber -eq $_.DiskNumber }
+            $selectedDisk = $_
+            $currentDisk = $currentDiskInfo | Where-Object { $_.DiskNumber -eq $selectedDisk.DiskNumber }
+            
             if ($currentDisk) {
-                $currentDisk
+                # Assuming you want the first match only, you can use Select-Object
+                $currentDisk | Select-Object -First 1
             } else {
-                Write-Warning "Disk $($_.DiskNumber) no longer found in system"
-                $_  # Return original if not found
+                Write-Warning "Disk $($selectedDisk.DiskNumber) no longer found in system"
+                $selectedDisk  # Return original if not found
             }
         }
         
@@ -285,6 +288,7 @@ function Update-SelectedDiskInfo {
         return $SelectedDisks  # Return original on error
     }
 }
+
 
 # Just get disk information
 $diskInfo = Get-DiskInfo
@@ -304,7 +308,16 @@ Show-DiskInfo $selectedDisks
 Initialize-NewDisk  $selectedDisks -Force
 
 
-Update-SelectedDiskInfo $selectedDisks
+
+Write-Host "Old Selected Disks: $($selectedDisks.Count)"
+Show-DiskInfo $selectedDisks
+
+$selectedDisks = Update-SelectedDiskInfo $selectedDisks
+
+Write-Host "New Selected Disks: $($selectedDisks.Count)"
+Show-DiskInfo $selectedDisks
+
+
 
 # Enable BitLocker on all selected disks
 foreach ($disk in $script:selectedDisks) {
@@ -335,7 +348,6 @@ while ($selectedDisksCopy.Count -gt 0) {
             Write-Host "Disk $($disk.DriveLetters) is fully encrypted" -ForegroundColor Green
             Initialize-NewDisk -SelectedDisks $disk -Force
             $selectedDisksCopy = $selectedDisksCopy | Where-Object { $_.DiskNumber -ne $disk.DiskNumber }
-            Write-Host $selectedDisksCopy
         } else {
             Write-Host "Disk $($disk.DriveLetters) encryption progress: $encryptionStatus%" -ForegroundColor Yellow
         }
