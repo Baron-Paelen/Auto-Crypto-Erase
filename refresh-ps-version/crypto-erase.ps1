@@ -1,8 +1,8 @@
 # should be used like this: 
 # 1. run ./crypto-erase.ps1
 # 2. script enumerates all drives and asks for the drive(s) to erase
-# 3. for each drive selected, run the diskpart series of commands, either via diskpart script or manual entry'
-#    - refresh drive letters per disk by disk number bc diskpart will change them
+# 3. for each drive selected, clean the drive, initialize it, format it, and assign a drive letter'
+#    - refresh drive letters per disk by disk number bc formatting may change them
 # 4. for each drive selected, use powershell cmdlets to enable bitlocker with a random password each
 # 5. for each drive, spin until the drive is fully encrypted
 # 5.5 perhaps list percentages of encryption progress periodically. say a drive is done encrypting or fully done wiping as needed.
@@ -86,6 +86,8 @@ function Get-DiskInfo {
                 CapacityGB = [math]::Round($totalCapacity / 1GB, 2)
             }
         }
+
+        Write-Host "Disk Info Array: $diskInfoArray"
         
         return $diskInfoArray
     }
@@ -160,7 +162,7 @@ function Show-DiskInfo {
 }
 
 function Initialize-NewDisk {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
     param(
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
         [PSCustomObject[]]$SelectedDisks,
@@ -237,10 +239,10 @@ function Initialize-NewDisk {
                     $volume = Format-Volume -Partition $partition @formatParams 
                     
                     # Summary
-                    Write-Host "`nDisk $($disk.DiskNumber) successfully initialized:" -ForegroundColor Green
-                    Write-Host "  Drive Letter: $($partition.DriveLetter)" -ForegroundColor Green
-                    Write-Host "  File System: $FileSystem" -ForegroundColor Green
-                    Write-Host "  Capacity: $([math]::Round($volume.Size / 1GB, 2)) GB" -ForegroundColor Green
+                    Write-Host "`n  Disk $($disk.DiskNumber) successfully initialized:" -ForegroundColor Green
+                    Write-Host "    Drive Letter: $($partition.DriveLetter)" -ForegroundColor Green
+                    Write-Host "    File System: $FileSystem" -ForegroundColor Green
+                    Write-Host "    Capacity: $([math]::Round($volume.Size / 1GB, 2)) GB" -ForegroundColor Green
                 }
             }
             catch {
@@ -291,20 +293,57 @@ $diskInfo = Get-DiskInfo
 # Select disks from the list
 $selectedDisks = Select-DiskFromList -DiskList $diskInfo
 
+if ($selectedDisks -eq $null) {
+    Write-Host "No disks selected. Exiting script." -ForegroundColor Yellow
+    exit
+}
+
 Show-DiskInfo $selectedDisks
 
 # Clean and format the disks
-Initialize-NewDisk  $selectedDisks
+Initialize-NewDisk  $selectedDisks -Force
 
-# Generate random password and convert to proper format 
-$Password = New-RandomPassword -Length 25 -IncludeSpecialChars
-$SecureString = ConvertTo-SecureString $Password -AsPlainText -Force
-
-# Enable BitLocker on all selected disks
-foreach ($disk in $script:selectedDisks) {
-    Enable-BitLocker -MountPoint "$($disk.DriveLetter):" -EncryptionMethod Aes256 -UsedSpaceOnly -Pin $SecureString -TPMandPinProtector -WhatIf
-}
 
 Update-SelectedDiskInfo $selectedDisks
 
-Show-DiskInfo $selectedDisks
+# Enable BitLocker on all selected disks
+foreach ($disk in $script:selectedDisks) {
+    # Generate random password and convert to proper format 
+    $Password = New-RandomPassword -Length 25 -IncludeSpecialChars
+    $SecureString = ConvertTo-SecureString $Password -AsPlainText -Force
+    
+    $mountPoint = "$($disk.DriveLetters):\"
+    $BitLockerResult = Enable-BitLocker -MountPoint $mountPoint -EncryptionMethod Aes256 -PasswordProtector -Password $SecureString #-WhatIf #-UsedSpaceOnly 
+
+    if ($BitLockerResult) {
+        Write-Host "BitLocker enabled on $($disk.DriveLetters) with random password" -ForegroundColor Green
+    } else {
+        Write-Error "Failed to enable BitLocker on $($disk.DriveLetters)"
+    }
+}
+
+# Spin until all selected disks are fully encrypted. If a disk finishes encryption while still spinning, wipe it again.
+$selectedDisksCopy = @() + $selectedDisks
+while ($selectedDisksCopy.Count -gt 0) {
+    Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
+    # Write-Host $selectedD`isksCopy
+    foreach ($disk in $selectedDisksCopy) {
+        $mountPoint = "$($disk.DriveLetters):\"
+        $encryptionStatus = Get-BitLockerVolume -MountPoint $mountPoint | Select-Object -ExpandProperty EncryptionPercentage
+        
+        if ($encryptionStatus -eq 100) {
+            Write-Host "Disk $($disk.DriveLetters) is fully encrypted" -ForegroundColor Green
+            Initialize-NewDisk -SelectedDisks $disk -Force
+            $selectedDisksCopy = $selectedDisksCopy | Where-Object { $_.DiskNumber -ne $disk.DiskNumber }
+            Write-Host $selectedDisksCopy
+        } else {
+            Write-Host "Disk $($disk.DriveLetters) encryption progress: $encryptionStatus%" -ForegroundColor Yellow
+        }
+    }
+
+    # Wait for 15 seconds before checking again
+    Start-Sleep -Seconds 15
+}
+
+# One more format to ensure the disk is clean
+Initialize-NewDisk -SelectedDisks $selectedDisks -Force
