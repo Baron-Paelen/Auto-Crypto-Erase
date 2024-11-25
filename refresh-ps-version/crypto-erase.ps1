@@ -211,12 +211,20 @@ function Initialize-NewDisk {
                 if ($PSCmdlet.ShouldProcess("Disk $($disk.DiskNumber)", "Initialize and format disk")) {
                     Write-Host "`nProcessing Disk $($disk.DiskNumber):" -ForegroundColor Cyan
                     
+                    # Step 0: Try to initialize disk first in case it's not initialized
+                    try {
+                        Write-Host "  Initializing disk..." -ForegroundColor Yellow
+                        Initialize-Disk -Number $disk.DiskNumber -PartitionStyle GPT -ErrorAction SilentlyContinue
+                    } catch {
+                        Write-Warning "Disk $($disk.DiskNumber) already initialized. Continuing..."
+                    }
+
                     # Step 1: Clear/Clean the disk
                     Write-Host "  Cleaning disk..." -ForegroundColor Yellow
                     Clear-Disk -Number $disk.DiskNumber -RemoveData -RemoveOEM -Confirm:$false
                     
                     # Step 2: Initialize the disk
-                    Write-Host "  Initializing disk..." -ForegroundColor Yellow
+                    Write-Host "  Initializing disk again..." -ForegroundColor Yellow
                     Initialize-Disk -Number $disk.DiskNumber -PartitionStyle GPT
                     
                     # Step 3: Get next available drive letter
@@ -307,14 +315,10 @@ Show-DiskInfo $selectedDisks
 # Clean and format the disks
 Initialize-NewDisk  $selectedDisks -Force
 
-
-
-Write-Host "Old Selected Disks: $($selectedDisks.Count)"
-Show-DiskInfo $selectedDisks
-
+# Update disk information after formatting
 $selectedDisks = Update-SelectedDiskInfo $selectedDisks
 
-Write-Host "New Selected Disks: $($selectedDisks.Count)"
+# Show updated disk information
 Show-DiskInfo $selectedDisks
 
 
