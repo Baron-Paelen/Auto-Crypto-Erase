@@ -81,12 +81,14 @@ function Get-DiskInfo {
                 }
             }
             
+            
             # Create and add disk info object
             $diskInfoArray += [PSCustomObject]@{
-                DiskNumber = $disk.DeviceId
-                FriendlyName = $disk.FriendlyName
-                DriveLetters = $driveLetters
-                CapacityGB = [math]::Round($totalCapacity / 1GB, 2)
+                DiskNumber = $disk.DeviceId # disk number
+                FriendlyName = $disk.FriendlyName # usually the make/model of the drive
+                DriveLetters = $driveLetters # any associated drive letters for partitions on this disk
+                CapacityGB = [math]::Round($totalCapacity / 1GB, 2) # take a wild guess 
+                MediaType = $disk.MediaType # either HDD, SDD, or Unspecified
             }
         }
 
@@ -106,17 +108,8 @@ function Select-DiskFromList {
     )
     
     try {
-        # Display header
-        Write-Host "`nAvailable Disks:" -ForegroundColor Cyan
-        Write-Host "================`n" -ForegroundColor Cyan
-        
         # Display disk information
-        foreach ($disk in $DiskList) {
-            Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
-            Write-Host "  Name: $($disk.FriendlyName)"
-            Write-Host "  Drive Letters: $($disk.DriveLetters)"
-            Write-Host "  Capacity: $($disk.CapacityGB) GB`n"
-        }
+        Show-AllDiskInfo $DiskList "Available Disks"
         
         # Prompt for selection
         Write-Host "Enter disk number(s) to select (comma-separated), or 'q' to quit:" -ForegroundColor Green
@@ -144,22 +137,37 @@ function Select-DiskFromList {
 }
 
 # Helper function to display disk information
+function Show-AllDiskInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [Array]$DiskList,
+
+        [Parameter(Mandatory=$false)]
+        [string]$Title = "Disk Information"
+    )
+    
+    Write-Host "`n$($Title):" -ForegroundColor Cyan
+    Write-Host "================`n" -ForegroundColor Cyan
+    
+    foreach ($disk in $DiskList) {
+        Show-DiskInfo $disk   
+    }
+}
+
 function Show-DiskInfo {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
-        [Array]$DiskList
+        [PSCustomObject]$Disk
     )
-    
-    Write-Host "`nDisk Information:" -ForegroundColor Cyan
-    Write-Host "================`n" -ForegroundColor Cyan
-    
-    foreach ($disk in $DiskList) {
-        Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
-        Write-Host "  Name: $($disk.FriendlyName)"
-        Write-Host "  Drive Letters: $($disk.DriveLetters)"
-        Write-Host "  Capacity: $($disk.CapacityGB) GB`n"
-    }
+
+    Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
+    Write-Host "  Name: $($disk.FriendlyName)"
+    Write-Host "  Drive Letters: $($disk.DriveLetters)"
+    Write-Host "  Capacity: $($disk.CapacityGB) GB"
+    Write-Host "  MediaType: $($disk.MediaType)`n"
+
 }
 
 function Initialize-NewDisk {
@@ -247,11 +255,12 @@ function Initialize-NewDisk {
                     
                     $volume = Format-Volume -Partition $partition @formatParams 
                     
-                    # Summary
-                    Write-Host "`n  Disk $($disk.DiskNumber) successfully initialized:" -ForegroundColor Green
+                    # Summary (gotta do it manually; TODO clean up and use Show-DiskInfo)
+                    Write-Host "  Disk $($disk.DiskNumber) successfully initialized:" -ForegroundColor Green
                     Write-Host "    Drive Letter: $($partition.DriveLetter)" -ForegroundColor Green
                     Write-Host "    File System: $FileSystem" -ForegroundColor Green
                     Write-Host "    Capacity: $([math]::Round($volume.Size / 1GB, 2)) GB" -ForegroundColor Green
+                    Write-Host "    MediaType: $($disk.MediaType)`n"
                 }
             }
             catch {
@@ -264,6 +273,7 @@ function Initialize-NewDisk {
         Write-Host "`nOperation completed" -ForegroundColor Green
     }
 }
+
 function Update-SelectedDiskInfo {
     [CmdletBinding()]
     param(
@@ -297,10 +307,55 @@ function Update-SelectedDiskInfo {
     }
 }
 
+# process for SSDs
+function Perform-CryptoErase {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [PSCustomObject]$Disk
+    )
+
+    try {
+        Write-Host "Crypto" -ForegroundColor Green
+        # Generate random password and convert to proper format 
+        $Password = New-RandomPassword -Length 25 -IncludeSpecialChars
+        $SecureString = ConvertTo-SecureString $Password -AsPlainText -Force
+        
+        $mountPoint = "$($disk.DriveLetters):\"
+        $BitLockerResult = Enable-BitLocker -MountPoint $mountPoint -EncryptionMethod Aes256 -PasswordProtector -Password $SecureString -WhatIf #-UsedSpaceOnly 
+
+        if ($BitLockerResult) {
+            Write-Host "BitLocker enabled on $($disk.DriveLetters) with random password" -ForegroundColor Green
+        } else {
+            Write-Error "Failed to enable BitLocker on $($disk.DriveLetters)"
+        }
+    } 
+    catch {
+        Write-Error "Error Performing Crypto Erase on Disk $($Disk.DiskNumber)!"
+    }
+}
+
+# process for HDDs
+function Perform-DOD3Pass {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [PSCustomObject]$Disk
+    )
+
+    try {
+        $formatCommand = "format $($Disk.DriveLetters): /P:3 /V:Wiped$($Disk.DiskNumber) /Y /q"
+        Write-Host "3-Pass Wipe started on Disk $($Disk.DiskNumber)" -ForegroundColor Green
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c $formatCommand" #-Wait #-NoNewWindow
+    } 
+    catch {
+        Write-Error "Error Performing DoD 3-Pass on Disk $($Disk.DiskNumber)!"
+    }
+}
+
 
 # Just get disk information
 $diskInfo = Get-DiskInfo
-
 
 # Select disks from the list
 $selectedDisks = Select-DiskFromList -DiskList $diskInfo
@@ -310,7 +365,7 @@ if ($selectedDisks -eq $null) {
     exit
 }
 
-Show-DiskInfo $selectedDisks
+Show-AllDiskInfo $selectedDisks
 
 # Clean and format the disks
 Initialize-NewDisk  $selectedDisks -Force
@@ -319,39 +374,50 @@ Initialize-NewDisk  $selectedDisks -Force
 $selectedDisks = Update-SelectedDiskInfo $selectedDisks
 
 # Show updated disk information
-Show-DiskInfo $selectedDisks
+Show-AllDiskInfo $selectedDisks
 
 
 
-# Enable BitLocker on all selected disks
+# Run associated wipe on all selected disks
 foreach ($disk in $script:selectedDisks) {
-    # Generate random password and convert to proper format 
-    $Password = New-RandomPassword -Length 25 -IncludeSpecialChars
-    $SecureString = ConvertTo-SecureString $Password -AsPlainText -Force
-    
-    $mountPoint = "$($disk.DriveLetters):\"
-    $BitLockerResult = Enable-BitLocker -MountPoint $mountPoint -EncryptionMethod Aes256 -PasswordProtector -Password $SecureString #-WhatIf #-UsedSpaceOnly 
-
-    if ($BitLockerResult) {
-        Write-Host "BitLocker enabled on $($disk.DriveLetters) with random password" -ForegroundColor Green
-    } else {
-        Write-Error "Failed to enable BitLocker on $($disk.DriveLetters)"
+    switch ($disk.MediaType) {
+        "SSD" {Perform-CryptoErase $disk; break }
+        "HDD" {Perform-DOD3Pass $disk; break }
+        "Unspecified" {Write-Host "Skipping Disk $($disk.DiskNumber) as it is of Unspecified type." -ForegroundColor Yellow; break }
     }
 }
 
-# Spin until all selected disks are fully encrypted. If a disk finishes encryption while still spinning, wipe it again.
-$selectedDisksCopy = @() + $selectedDisks
-while ($selectedDisksCopy.Count -gt 0) {
+# Write-Host "'leaving!"
+# exit
+# SEV THIS IS WHERE YOU LEFT OFF!
+$selectedSSDs = @() + $selectedDisks | Where-Object {$_.MediaType -eq "SSD"}
+$selectedHDDs = @() + $selectedDisks | Where-Object {$_.MediaType -eq "HDD"}
+Write-Host "blah is: $($selectedSSDs)"
+Write-Host "blah is: $($selectedSSDs.Count)"
+Write-Host "`n"
+Write-Host "blah is: $($selectedHDDs)"
+Write-Host "blah is: $($selectedHDDs.Count)"
+
+# Spin until all selected SSDs are fully encrypted. If an SSD finishes encryption while still spinning, wipe it again to finish the process.
+while ($selectedSSDs.Count -gt 0) {
+    if ($selectedHDDs.Count -gt 0) {
+        Write-Host "HDDs" -ForegroundColor Cyan # Divider
+        Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
+        Write-Host "Check Open CMD Windows for 3-Pass Wipe Progress"
+    }
+
+    
+    Write-Host "SSDs" -ForegroundColor Cyan # Divider
     Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
     # Write-Host $selectedD`isksCopy
-    foreach ($disk in $selectedDisksCopy) {
+    foreach ($disk in $selectedSSDs) {
         $mountPoint = "$($disk.DriveLetters):\"
         $encryptionStatus = Get-BitLockerVolume -MountPoint $mountPoint | Select-Object -ExpandProperty EncryptionPercentage
         
         if ($encryptionStatus -eq 100) {
             Write-Host "Disk $($disk.DriveLetters) is fully encrypted" -ForegroundColor Green
             Initialize-NewDisk -SelectedDisks $disk -Force
-            $selectedDisksCopy = $selectedDisksCopy | Where-Object { $_.DiskNumber -ne $disk.DiskNumber }
+            $selectedSSDs = $selectedSSDs | Where-Object { $_.DiskNumber -ne $disk.DiskNumber }
         } else {
             Write-Host "Disk $($disk.DriveLetters) encryption progress: $encryptionStatus%" -ForegroundColor Yellow
         }
@@ -361,5 +427,8 @@ while ($selectedDisksCopy.Count -gt 0) {
     Start-Sleep -Seconds 15
 }
 
-# One more format to ensure the disk is clean
-Initialize-NewDisk -SelectedDisks $selectedDisks -Force
+Write-Host "All SSDs have been cryptographically erased." -ForegroundColor Green
+
+if ($selectedHDDs.Count -gt 0) {
+    Write-Host "Check Open CMD Windows for 3-Pass Wipe Progress. Once all CMD windows have closed, all selected HDDs have been 3-Pass erased." -ForegroundColor Green
+}
