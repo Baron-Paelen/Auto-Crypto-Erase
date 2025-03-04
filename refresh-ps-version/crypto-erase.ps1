@@ -260,7 +260,7 @@ function Initialize-NewDisk {
                     Write-Host "    Drive Letter: $($partition.DriveLetter)" -ForegroundColor Green
                     Write-Host "    File System: $FileSystem" -ForegroundColor Green
                     Write-Host "    Capacity: $([math]::Round($volume.Size / 1GB, 2)) GB" -ForegroundColor Green
-                    Write-Host "    MediaType: $($disk.MediaType)`n"
+                    Write-Host "    MediaType: $($disk.MediaType)`n" -ForegroundColor Green
                 }
             }
             catch {
@@ -322,7 +322,7 @@ function Perform-CryptoErase {
         $SecureString = ConvertTo-SecureString $Password -AsPlainText -Force
         
         $mountPoint = "$($disk.DriveLetters):\"
-        $BitLockerResult = Enable-BitLocker -MountPoint $mountPoint -EncryptionMethod Aes256 -PasswordProtector -Password $SecureString -WhatIf #-UsedSpaceOnly 
+        $BitLockerResult = Enable-BitLocker -MountPoint $mountPoint -EncryptionMethod Aes256 -PasswordProtector -Password $SecureString #-WhatIf #-UsedSpaceOnly 
 
         if ($BitLockerResult) {
             Write-Host "BitLocker enabled on $($disk.DriveLetters) with random password" -ForegroundColor Green
@@ -344,7 +344,7 @@ function Perform-DOD3Pass {
     )
 
     try {
-        $formatCommand = "format $($Disk.DriveLetters): /P:3 /V:Wiped$($Disk.DiskNumber) /Y /q"
+        $formatCommand = "format $($Disk.DriveLetters): /P:3 /V:Wiped$($Disk.DiskNumber) /Y"
         Write-Host "3-Pass Wipe started on Disk $($Disk.DiskNumber)" -ForegroundColor Green
         Start-Process -FilePath "cmd.exe" -ArgumentList "/c $formatCommand" #-Wait #-NoNewWindow
     } 
