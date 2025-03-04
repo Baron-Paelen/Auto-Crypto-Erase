@@ -387,8 +387,8 @@ foreach ($disk in $script:selectedDisks) {
             $selection = Read-Host
             
             switch ($selection) {
-                "SSD" { $disk.MediaType = "SSD" }
-                "HDD" { $disk.MediaType = "HDD" }
+                "SSD" { $disk.MediaType = "SSD"; break }
+                "HDD" { $disk.MediaType = "HDD"; break  }
                 "q"   { return $null }
                 default { Write-Host "Invalid Option. Exiting..." -ForegroundColor Yellow; return $null }
             }
