@@ -381,9 +381,20 @@ Show-AllDiskInfo $selectedDisks
 # Run associated wipe on all selected disks
 foreach ($disk in $script:selectedDisks) {
     switch ($disk.MediaType) {
-        "SSD" {Perform-CryptoErase $disk; break }
-        "HDD" {Perform-DOD3Pass $disk; break }
-        "Unspecified" {Write-Host "Skipping Disk $($disk.DiskNumber) as it is of Unspecified type." -ForegroundColor Yellow; break }
+        # "Unspecified" {Write-Host "Skipping Disk $($disk.DiskNumber) as it is of Unspecified type." -ForegroundColor Yellow; break }
+        "Unspecified" {
+            Write-Host "Could not detect if Disk $($disk.DiskNUmber) is HDD or SSD. Please specify either 'HDD' or 'SSD', or 'q' to quit:" -ForegroundColor Yellow
+            $selection = Read-Host
+            
+            switch ($selection) {
+                "SSD" { $disk.MediaType = "SSD" }
+                "HDD" { $disk.MediaType = "HDD" }
+                "q"   { return $null }
+                default { Write-Host "Invalid Option. Exiting..." -ForegroundColor Yellow; return $null }
+            }
+        }
+        "SSD" { Perform-CryptoErase $disk; break }
+        "HDD" { Perform-DOD3Pass $disk; break }
     }
 }
 
