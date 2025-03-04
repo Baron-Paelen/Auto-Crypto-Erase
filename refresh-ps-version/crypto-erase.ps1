@@ -393,8 +393,8 @@ foreach ($disk in $script:selectedDisks) {
                 default { Write-Host "Invalid Option. Exiting..." -ForegroundColor Yellow; return $null }
             }
         }
-        "SSD" { Perform-CryptoErase $disk; break }
-        "HDD" { Perform-DOD3Pass $disk; break }
+        "SSD" { Perform-CryptoErase $disk; Write-Host "this is SSD"; break }
+        "HDD" { Perform-DOD3Pass $disk; Write-Host "this is HDD"; break }
     }
 }
 
