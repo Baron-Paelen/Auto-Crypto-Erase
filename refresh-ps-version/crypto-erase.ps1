@@ -404,10 +404,10 @@ foreach ($disk in $script:selectedDisks) {
 $selectedSSDs = $selectedDisks | Where-Object {$_.MediaType -eq "SSD"}
 $selectedHDDs = $selectedDisks | Where-Object {$_.MediaType -eq "HDD"}
 Write-Host "blah is: $($selectedSSDs)"
-Write-Host "blah is: $($selectedSSDs.Count)"
+Write-Host "blah is: $($selectedSSDs.Keys.Count)"
 Write-Host "`n"
 Write-Host "blah is: $($selectedHDDs)"
-Write-Host "blah is: $($selectedHDDs.Count)"
+Write-Host "blah is: $($selectedHDDs.Keys.Count)"
 
 # Spin until all selected SSDs are fully encrypted. If an SSD finishes encryption while still spinning, wipe it again to finish the process.
 while ($selectedSSDs.Count -gt 0) {
