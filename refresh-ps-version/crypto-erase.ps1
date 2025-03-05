@@ -401,8 +401,8 @@ foreach ($disk in $script:selectedDisks) {
 # Write-Host "'leaving!"
 # exit
 # SEV THIS IS WHERE YOU LEFT OFF!
-$selectedSSDs = @() + $selectedDisks | Where-Object {$_.MediaType -eq "SSD"}
-$selectedHDDs = @() + $selectedDisks | Where-Object {$_.MediaType -eq "HDD"}
+$selectedSSDs = $selectedDisks | Where-Object {$_.MediaType -eq "SSD"}
+$selectedHDDs = $selectedDisks | Where-Object {$_.MediaType -eq "HDD"}
 Write-Host "blah is: $($selectedSSDs)"
 Write-Host "blah is: $($selectedSSDs.Count)"
 Write-Host "`n"
