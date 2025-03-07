@@ -375,12 +375,9 @@ $selectedDisks = Update-SelectedDiskInfo $selectedDisks
 # Show updated disk information
 Show-AllDiskInfo $selectedDisks
 
-
-
-# Run associated wipe on all selected disks
-foreach ($disk in $script:selectedDisks) {
+# Update selected disks to properly classify Unspecified disks with user input
+foreach ($disk in $selectedDisks) {
     switch ($disk.MediaType) {
-        # "Unspecified" {Write-Host "Skipping Disk $($disk.DiskNumber) as it is of Unspecified type." -ForegroundColor Yellow; break }
         "Unspecified" {
             Write-Host "Could not detect if Disk $($disk.DiskNUmber) is HDD or SSD. Please specify either 'HDD' or 'SSD', or 'q' to quit:" -ForegroundColor Yellow
             $selection = Read-Host
@@ -392,53 +389,73 @@ foreach ($disk in $script:selectedDisks) {
                 default { Write-Host "Invalid Option. Exiting..." -ForegroundColor Yellow; return $null }
             }
         }
-        "SSD" { Perform-CryptoErase $disk; Write-Host "this is SSD"; break }
-        "HDD" { Perform-DOD3Pass $disk; Write-Host "this is HDD"; break }
     }
 }
 
-# Write-Host "'leaving!"
-# exit
-# SEV THIS IS WHERE YOU LEFT OFF!
-$selectedSSDs = $selectedDisks | Where-Object {$_.MediaType -eq "SSD"}
-$selectedHDDs = $selectedDisks | Where-Object {$_.MediaType -eq "HDD"}
-Write-Host "ssd is: $($selectedSSDs)"
-Write-Host "ssd count is: $(@($selectedSSDs).Count)"
-Write-Host "`n"
-Write-Host "hdd is: $($selectedHDDs)"
-Write-Host "hdd count is: $(@($selectedHDDs).Count)"
-
-# Give message for any HDDs
-if ($selectedHDDs.Count -gt 0) {
-    Write-Host "HDDs" -ForegroundColor Cyan # Divider
-    Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
-    Write-Host "Check Open CMD Windows for 3-Pass Wipe Progress"
+# Run associated wipe on all selected disks
+foreach ($disk in $script:selectedDisks) {
+    switch ($disk.MediaType) {
+        "SSD" {
+            Perform-CryptoErase $disk; 
+            Write-Host "`tPerforming Cryptographic Erasure on Disk $($disk.DiskNumber)" -ForegroundColor Green; 
+            break 
+        }
+        "HDD" { 
+            Perform-DOD3Pass $disk; 
+            Write-Host "`tPerforming DoD 3-Pass on Disk $($disk.DiskNumber)" -ForegroundColor Green; 
+            break 
+        }
+        default { 
+            Write-Host "`tUnknown Disk Type. Skipping Disk $($disk.DiskNumber)..." -ForegroundColor Yellow 
+        }
+    }
 }
 
+# Visual Separation
+Write-Host "`n`n"
+
+
+$selectedSSDs = $selectedDisks | Where-Object {$_.MediaType -eq "SSD"}
+$selectedHDDs = $selectedDisks | Where-Object {$_.MediaType -eq "HDD"}
+
 # Spin until all selected SSDs are fully encrypted. If an SSD finishes encryption while still spinning, wipe it again to finish the process.
-while ($selectedSSDs.Count -gt 0) {
+while (@($selectedSSDs).Count -gt 0) {
+    # Give message for any HDDs (this is just so it doesn't get buried)
+    if (@($selectedHDDs).Count -gt 0) {
+        Write-Host "HDDs" -ForegroundColor Cyan # Divider
+        Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
+        Write-Host "Check Open CMD Windows for 3-Pass Wipe Progress`n" -ForegroundColor Yellow
+    }
+	
+    # Give message for any SSDs
     Write-Host "SSDs" -ForegroundColor Cyan # Divider
     Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
-    # Write-Host $selectedD`isksCopy
+    
     foreach ($disk in $selectedSSDs) {
         $mountPoint = "$($disk.DriveLetters):\"
         $encryptionStatus = Get-BitLockerVolume -MountPoint $mountPoint | Select-Object -ExpandProperty EncryptionPercentage
         
         if ($encryptionStatus -eq 100) {
-            Write-Host "Disk $($disk.DriveLetters) is fully encrypted" -ForegroundColor Green
+            Write-Host "Disk $($disk.DiskNumber) is fully encrypted. Performing final format..." -ForegroundColor Green
             Initialize-NewDisk -SelectedDisks $disk -Force
             $selectedSSDs = $selectedSSDs | Where-Object { $_.DiskNumber -ne $disk.DiskNumber }
         } else {
             Write-Host "Disk $($disk.DriveLetters) encryption progress: $encryptionStatus%" -ForegroundColor Yellow
         }
     }
+    Write-Host "`n`n"
 
     # Wait for 15 seconds before checking again
     Start-Sleep -Seconds 15
 }
 
-Write-Host "All SSDs have been cryptographically erased." -ForegroundColor Green
-
+Write-Host "`nHDDs" -ForegroundColor Cyan # Divider
+Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
 if ($selectedHDDs.Count -gt 0) {
     Write-Host "Check Open CMD Windows for 3-Pass Wipe Progress. Once all CMD windows have closed, all selected HDDs have been 3-Pass erased." -ForegroundColor Green
 }
+
+Write-Host "`nSSDs" -ForegroundColor Cyan # Divider
+Write-Host "----------------------------------------" -ForegroundColor Cyan # Divider
+Write-Host "All SSDs have been cryptographically erased." -ForegroundColor Green
+
