@@ -89,6 +89,7 @@ function Get-DiskInfo {
                 DriveLetters = $driveLetters # any associated drive letters for partitions on this disk
                 CapacityGB = [math]::Round($totalCapacity / 1GB, 2) # take a wild guess 
                 MediaType = $disk.MediaType # either HDD, SDD, or Unspecified
+                SerialNumber = $disk.SerialNumber
             }
         }
 
@@ -163,10 +164,11 @@ function Show-DiskInfo {
     )
 
     Write-Host "Disk $($disk.DiskNumber):" -ForegroundColor Yellow
-    Write-Host "  Name: $($disk.FriendlyName)"
+    Write-Host "  Name:          $($disk.FriendlyName)"
     Write-Host "  Drive Letters: $($disk.DriveLetters)"
-    Write-Host "  Capacity: $($disk.CapacityGB) GB"
-    Write-Host "  MediaType: $($disk.MediaType)`n"
+    Write-Host "  Capacity:      $($disk.CapacityGB) GB"
+    Write-Host "  MediaType:     $($disk.MediaType)"
+    Write-Host "  SerialNumber:  $($disk.SerialNumber)"
 
 }
 
@@ -345,7 +347,7 @@ function Perform-DOD3Pass {
     try {
         $formatCommand = "format $($Disk.DriveLetters): /P:3 /V:Wiped$($Disk.DiskNumber) /Y"
         Write-Host "3-Pass Wipe started on Disk $($Disk.DiskNumber)" -ForegroundColor Green
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c $formatCommand" #-Wait #-NoNewWindow
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c $formatCommand" #-NoNewWindow
     } 
     catch {
         Write-Error "Error Performing DoD 3-Pass on Disk $($Disk.DiskNumber)!"
