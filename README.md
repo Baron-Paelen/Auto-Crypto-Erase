@@ -25,11 +25,11 @@ Make sure all the drives you want to erase are, in fact, plugged into the comput
 
 2. Simply run the following:
 ```powershell
-irm https://raw.githubusercontent.com/ucscitsdepot/Auto-Secure-Erase/refs/heads/main/refresh-ps-version/crypto-erase.ps1 | iex
+irm https://raw.githubusercontent.com/ucscitsdepot/Auto-Secure-Erase/refs/heads/main/secure-erase.ps1 | iex
 ```
 or
 ```powershell
-irm https://shorturl.at/HlWl9 | iex
+irm https://tinyurl.com/its-secure-erase | iex
 ```
 ...and follow the prompts from the script.
 
@@ -39,7 +39,7 @@ irm https://shorturl.at/HlWl9 | iex
 
 1. Open *PowerShell* as *administrator*. You will need to `cd` into the directory that the script is stored in.
 
-2. Simply run `./crypto-erase.ps1`, and follow the prompts from the script.
+2. Simply run `./secure-erase.ps1`, and follow the prompts from the script.
 
 3. You will be updated periodically as the script progresses. In general, the script follows three stages:
     1. Clean, format, and name each disk. This is where you may see permission errors - Run *PowerShell* as admin.
