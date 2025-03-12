@@ -55,19 +55,22 @@ irm https://shorturl.at/HlWl9 | iex
 
 ### Troubleshooting
 1. Sometimes, disks may fail the automated process. This usually presents itself as a periodic wall of red and black error text. You can try:
+    - Restarting the script after ending any ongoing formats or encryptions.
     - Erasing fewer disks at a time. This may help if you are using USB hubs, as those can get overwhelmed.
     - Running the disk(s) in a different enclosure. Some enclosures don't play nice with all disks.
     - Sometimes, drives are just DOA and can be tossed in the shred box.
 
-2. You may run into a PowerShell error that says the script is not allowed to run.
+3. You may run into a PowerShell error that says the script is not allowed to run.
 This can be fixed via the [Set-ExecutionPolicy](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-executionpolicy?view=powershell-7.4) command. For our purposes, the `Unrestricted` policy is enough.
 Run `Set-ExecutionPolicy Unrestricted` and agree to the prompt. **If this is not a Depot computer, please read the given link to only change the execution policy for the current session**.
 
 
 
 
-
-
+## For Future Maintainers
+Some things that can be improved or changed for QOL:
+- Run the Unspecified drive prompts before the initial clean/formats begin. This way, users can do everything upon starting the script and then walk away. Currently, users must wait to see if any drives need to have their Type (HDD/SDD) specified before secure erasure actually begins.
+- Check and disable in-progress BitLocker encryptions either on script failure/exit, or on script startup. This reduces the number of things the user has to do on a failed wiping attempt.
 
 
 
