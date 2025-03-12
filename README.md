@@ -1,12 +1,12 @@
 Made by Andrew Yegiayan :-)
 
 
-# Automatic Cryptographic Erasure Script!
+# Automatic Secure Erasure Script!
 ## What is it?
 
-I've created this script for the UCSC ITS Depot Technicians in order to automate the very boring process of wiping SSDs manually and one at a time.
+I've created this script for the UCSC ITS Depot Technicians in order to automate the very boring process of wiping SSDs and HDDs one at a time.
 
-The script will gather disk data, prompt you for which ones you'd like to use, and then operate off of that. There are built in protections to stop you from nuking C: drive.
+The script will gather disk data, prompt the user to select disks, and then perform the proper wiping procedures as needed. There are built in protections to stop you from nuking C: drive as well.
 
 ## How do I use it?
 
@@ -15,9 +15,25 @@ Whether you boot off of a liveboot USB of Windows 11 or use a native Windows 11 
 
 Make sure all the drives you want to erase are, in fact, plugged into the computer with data and power connections. I would try to avoid the USB 2.0 to SATA adapters as they are ridicuously slow during encryption.
 
-**If at any point you need to stop the script for whatever reason (either by X-ing the window or `Ctrl+C`), open the BitLocker manager to disable any ongoing encryptions before starting again.**
+**If at any point you need to stop the script for whatever reason (either by X-ing the window or `Ctrl+C`):**
+- If wiping SSDs: Open the "Manage BitLocker" Settings page, and disable any ongoing encryptions.
+- If wiping HDDs: Close any open black CMD windows that are running the format command.
 
-### Steps
+### Method 1 (Quick Execution)
+
+1. Open *PowerShell* as *administrator*.
+
+2. Simply run the following:
+```powershell
+irm https://raw.githubusercontent.com/ucscitsdepot/Auto-Secure-Erase/refs/heads/main/refresh-ps-version/crypto-erase.ps1 | iex
+```
+or
+```powershell
+irm https://shorturl.at/HlWl9 | iex
+```
+...and follow the prompts from the script.
+
+### Method 2 (Manual Execution)
 
 0. Download the script (or the whole repo) from the GitHub repository and place it somewhere accessible like the Desktop.
 
@@ -27,12 +43,14 @@ Make sure all the drives you want to erase are, in fact, plugged into the comput
 
 3. You will be updated periodically as the script progresses. In general, the script follows three stages:
     1. Clean, format, and name each disk. This is where you may see permission errors - Run *PowerShell* as admin.
-    2. Begins encryption on each disk.
+    2. Begins wiping each disk.
     3. Periodically checks on the encryption progress of each disk. You may see errors here - make sure drives haven't been unplugged.
     4. When a drive is done encrypting, it will repeat step 1. Once that is complete you will see a success message for that drive, and will no longer see updates for it.
         - This happens while other drives are encrypting, so you may miss the success. (don't worry)
 
-4. You will know the script is finished when you see a green success message and no more periodic updates.
+4. You will know the script is finished when:
+    - SSDs: The script has exited and no more periodic updates are posted to your PowerShell window. A completion message will be posted as well.
+    - HDDs: All black CMD windows have closed, and disk activity for selected disks is no longer at 100% in task manager
 
 
 ### Troubleshooting
@@ -59,7 +77,7 @@ Run `Set-ExecutionPolicy Unrestricted` and agree to the prompt. **If this is not
 ---
 ---
 
-# For ./DONTUSE/
+# Old and Deprecated. Can ignore safely
 ## This is my automatic cryptographic erasure script for ITS SSDs!
 ### powershell ALL version 
 *(use this if you want to wipe multiple drives at once)*
